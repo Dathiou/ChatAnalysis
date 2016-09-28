@@ -120,6 +120,17 @@ def display_metrics(classifierName,Y_pred,Y_true):
     print ""
     
 
+def NPSfrom1_10(outSamplePred,outSampleTrue,inSamplePred,inSampleTrue):
+    NPS_SCORE_pred_out = [-100 if x <= 6 else 100 if x >= 9 else 0 for x in outSamplePred]
+    NPS_SCORE_true_out = [-100 if x <= 6 else 100 if x >= 9 else 0 for x in outSampleTrue]
+    NPS_SCORE_pred_in = [-100 if x <= 6 else 100 if x >= 9 else 0 for x in inSamplePred]
+    NPS_SCORE_true_in = [-100 if x <= 6 else 100 if x >= 9 else 0 for x in inSampleTrue]  
+    return NPS_SCORE_pred_out,NPS_SCORE_true_out, NPS_SCORE_pred_in,NPS_SCORE_true_in     
+    
+def printMSE(outSamplePred,outSampleTrue,inSamplePred,inSampleTrue):
+    print "insample: ",mean_squared_error(inSampleTrue,inSamplePred)
+    print "outsample: ",mean_squared_error(outSampleTrue,outSamplePred)
+    
 def averageAUC(data,Label):
     
     aucArray = []

@@ -21,7 +21,9 @@ import codecs
 from nltk import pos_tag
 from sklearn import neighbors
 from sklearn.ensemble import BaggingRegressor
-
+import Models
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
 
 #from NNet import NeuralNet
 def ReviewToWords(s,stopwords):
@@ -41,21 +43,37 @@ def ReviewToWords(s,stopwords):
     
     
         tokens = nltk.tokenize.word_tokenize(s)
-        sent = pos_tag(tokens)
+        
+        #sent = pos_tag(tokens)
         
         
         if np.shape(tokens)[0] >= 3:
-            for term in sent:
-                cat = term[1]
-                w = term[0]
-                if len(w) >= 3 and cat != 'NNP':
+            for term in tokens:
+                #cat = term[1]
+                w = term
+                if len(w) >= 3:
                     w = wordnet_lemmatizer.lemmatize(w)
                     w = w.strip('[]\]')
                     
                     if w not in stopwords:
                         #mood_score += scores.get_score(term)
                         myTok.append(w)
-            
+        
+#         sent = pos_tag(tokens)
+#         
+#         
+#         if np.shape(tokens)[0] >= 3:
+#             for term in sent:
+#                 cat = term[1]
+#                 w = term[0]
+#                 if len(w) >= 3 and cat != 'NNP':
+#                     w = wordnet_lemmatizer.lemmatize(w)
+#                     w = w.strip('[]\]')
+#                     
+#                     if w not in stopwords:
+#                         #mood_score += scores.get_score(term)
+#                         myTok.append(w)
+#             
             
     #     tokens = [t for t in tokens if len(t) > 2] # remove short words, they're probably not useful
     #     tokens = [wordnet_lemmatizer.lemmatize(t) for t in tokens] # put words into base form
@@ -65,18 +83,19 @@ def ReviewToWords(s,stopwords):
   
 def buildFeatures(chat,scores,PosNegSplit):
     
-    
-    
     woAgent = chat[chat.AGENT_ID == 0]
     #woAgent= chat
-    woAgent['CLASS'] =  woAgent['SCORE'].apply(lambda x: 0 if x < PosNegSplit else 1 )
+    #woAgent['CLASS'] =  woAgent['SCORE']
     woAgent['Tokens'] = woAgent['TEXT'].apply(lambda x: ReviewToWords(x,stopwords) )
 
     woAgent1 = woAgent.groupby('SESSION_ID')#,as_index = False)
     Tokens = woAgent1['Tokens'].sum() #list of words for each chat session
-    y = woAgent1['CLASS'].first()
+    #y = woAgent1['CLASS'].first()
+    
     Score = woAgent1['SCORE'].first()
-    NPS_LEVEL = woAgent1['NPS_LEVEL'].first()
+    
+    y = Score.apply(lambda x: 0 if x < PosNegSplit else 1 ) #creates class label for potential classification
+    #NPS_LEVEL = woAgent1['NPS_LEVEL'].first()
 #     Count = woAgent1['CLASS'].count().rename("Count")
 #     max_per_group = woAgent1['TIMESTAMP'].max()
 #     min_per_group = woAgent1['TIMESTAMP'].min()
@@ -170,17 +189,19 @@ if __name__ == '__main__':
     wordnet_lemmatizer = nltk.stem.WordNetLemmatizer()
     chat_df,stopwords = utils.parseChat("C:/Users/DAMIEN.THIOULOUSE/Documents/SentimentAnalysis/Datasets/Chat.txt")
     scores = SS.SentimentScore(open("/Users/DAMIEN.THIOULOUSE/Documents/SentimentAnalysis/Datasets/AFINN-111.txt"))
-    y,x = buildFeatures(chat_df,scores, 7)
+    y,x = buildFeatures(chat_df,scores, 8)
    
     #y = np.concatenate((np.ones(len(pos_tweets)), np.zeros(len(neg_tweets))))
 
     x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=42)
     
-    n_dim = 150
+    n_dim = 50
     #Initialize model and build vocab
     imdb_w2v = Word2Vec(size=n_dim, min_count=5)
     imdb_w2v.build_vocab(x_train)
     imdb_w2v.train(x_train)
+    imdb_w2v.save_word2vec_format('w2c.txt', fvocab=None, binary=False)
+    imdb_w2v.train(x_test)
     #imdb_w2v.save_word2vec_format('w2c.txt', fvocab=None, binary=False)
     #plot()
     #imdb_w2v.similar_by_word('battery',topn=50)
@@ -206,49 +227,50 @@ if __name__ == '__main__':
     test_vecs = np.concatenate([buildWordVector(z, n_dim) for z in x_test])
     test_vecs = scale(test_vecs)
     
+    #Bagging with KNN regressor
+#     clf = BaggingRegressor(base_estimator=neighbors.KNeighborsRegressor(3),n_estimators=20,bootstrap=True,oob_score=True)
+#     clf.fit(train_vecs, y_train[:,1])
+#     knnRegInsampleBagg = clf.predict(train_vecs)
+#     knnRegOutsampleBagg = clf.predict(test_vecs)   
     
-    clf = BaggingRegressor(base_estimator=neighbors.KNeighborsRegressor(3),n_estimators=20,bootstrap=True,oob_score=True)
     
-    clf.fit(train_vecs, y_train[:,1])
-    knnRegInsampleBagg = clf.predict(train_vecs)
-    knnRegOutsampleBagg = clf.predict(test_vecs)   
-    
-    
-    lr = SGDClassifier(loss='log', penalty='l1')
-    lr.fit(train_vecs, y_train[:,0])
 
 
-    knn = neighbors.KNeighborsRegressor(3)
+################ Regression
+    knn = neighbors.KNeighborsRegressor(4)
     knn.fit(train_vecs, y_train[:,1])
-    
- 
-    
-    
-    
     knnRegInsample = knn.predict(train_vecs)
     knnRegOutsample = knn.predict(test_vecs)
-    print "KNN - MSE:"
-    print "insample: ",mean_squared_error(y_train[:,1],knnRegInsample)
-    print "outsample: ",mean_squared_error(y_test[:,1],knnRegOutsample)
+    print "MSE 1-10 KNN"
+    Models.printMSE(knnRegOutsample,y_test[:,1],knnRegInsample,y_train[:,1])
+    NPS_SCORE_pred_out,NPS_SCORE_true_out, NPS_SCORE_pred_in,NPS_SCORE_true_in = Models.NPSfrom1_10(knnRegOutsample, y_test[:,1], knnRegInsample, y_train[:,1])
+    print "KNN - MSE - NPS:"
+    Models.printMSE(NPS_SCORE_pred_out,NPS_SCORE_true_out,NPS_SCORE_pred_in,NPS_SCORE_true_in)
+    
+    
     treshol_low = 0.2
     treshold_high = 0.7
-    NPS_SCORE_pred_out = [-100 if x <= 6 else 100 if x >= 9 else 0 for x in knnRegOutsampleBagg]
-    NPS_SCORE_true_out = [-100 if x <= 6 else 100 if x >= 9 else 0 for x in y_test[:,1]]
-    NPS_SCORE_pred_in = [-100 if x <= 6 else 100 if x >= 9 else 0 for x in knnRegInsampleBagg]
-    NPS_SCORE_true_in = [-100 if x <= 6 else 100 if x >= 9 else 0 for x in y_train[:,1]]    
-    #Success_rate = sum([1  if x==y else 0 for x,y in zip(Cattrue,CatPred)])/float(np.shape(Cattrue)[0])
-    
-    Success_rate_out = sum([1  if x==y else 0 for x,y in zip(NPS_SCORE_true_out,NPS_SCORE_pred_out)])/float(np.shape(NPS_SCORE_true_out)[0])
-    Success_rate_in = sum([1  if x==y else 0 for x,y in zip(NPS_SCORE_pred_in,NPS_SCORE_true_in)])/float(np.shape(NPS_SCORE_pred_in)[0])
-    print "KNN - MSE:"
-    print "insample: ",mean_squared_error(NPS_SCORE_true_in,NPS_SCORE_pred_in)
-    print "outsample: ",mean_squared_error(NPS_SCORE_true_out,NPS_SCORE_pred_out)
-    print "----"
-    print "Success rate:"
-    print "insample: ",Success_rate_in
-    print "outsample: ",Success_rate_out
-    
 
+    lr = RandomForestClassifier(max_depth=50,n_estimators=10)#SGDClassifier(loss='log', penalty='l1')
+    lr.fit(train_vecs, y_train[:,0])
+    SGDInsample = lr.predict_proba(train_vecs)[:,1]*10
+    SGDOutsample = lr.predict_proba(test_vecs)[:,1]*10
+    print "MSE 1-10 SGD"
+    Models.printMSE(SGDOutsample,y_test[:,1],SGDInsample,y_train[:,1])
+    NPS_SCORE_pred_out,NPS_SCORE_true_out, NPS_SCORE_pred_in,NPS_SCORE_true_in = Models.NPSfrom1_10(SGDOutsample, y_test[:,1], SGDInsample, y_train[:,1])
+    print "SGD - MSE - NPS:"
+    Models.printMSE(NPS_SCORE_pred_out,NPS_SCORE_true_out,NPS_SCORE_pred_in,NPS_SCORE_true_in)
+
+    
+    StackedInsample = np.mean([SGDInsample,knnRegInsample],axis=0)
+    StackedOutsample = np.mean([SGDOutsample,knnRegOutsample],axis=0)
+    print "MSE 1-10 (SGD,KNN) stacked"
+    Models.printMSE(StackedOutsample,y_test[:,1],StackedInsample,y_train[:,1])
+    NPS_SCORE_pred_out,NPS_SCORE_true_out, NPS_SCORE_pred_in,NPS_SCORE_true_in = Models.NPSfrom1_10(StackedOutsample, y_test[:,1], StackedInsample, y_train[:,1])
+    print "(SGD,KNN) stacked - MSE - NPS:"
+    Models.printMSE(NPS_SCORE_pred_out,NPS_SCORE_true_out,NPS_SCORE_pred_in,NPS_SCORE_true_in)
+    
+    
     nnet = NeuralNet(100, learn_rate=1e-1, penalty=1e-8)
     maxiter = 1000
     batch = 150
@@ -271,29 +293,27 @@ if __name__ == '__main__':
     
     treshol_low = 0.2
     treshold_high = 0.7
-    NPS_SCORE_pred_out = [-100 if x <= treshol_low else 100 if x >= treshold_high else 0 for x in pred_probas_out]
-    NPS_SCORE_true_out = [-100 if x <= 6 else 100 if x >= 9 else 0 for x in y_test[:,1]]
-    NPS_SCORE_pred_in = [-100 if x <= treshol_low else 100 if x >= treshold_high else 0 for x in pred_probas_in]
-    NPS_SCORE_true_in = [-100 if x <= 6 else 100 if x >= 9 else 0 for x in y_train[:,1]]    
+
+    NPS_SCORE_pred_out,NPS_SCORE_true_out, NPS_SCORE_pred_in,NPS_SCORE_true_in = Models.NPSfrom1_10(pred_probas_out*10, y_test[:,1], pred_probas_in*10, y_train[:,1])
     #Success_rate = sum([1  if x==y else 0 for x,y in zip(Cattrue,CatPred)])/float(np.shape(Cattrue)[0])
-    
-    Success_rate_out = sum([1  if x==y else 0 for x,y in zip(NPS_SCORE_true_out,NPS_SCORE_pred_out)])/float(np.shape(NPS_SCORE_true_out)[0])
-    Success_rate_in = sum([1  if x==y else 0 for x,y in zip(NPS_SCORE_pred_in,NPS_SCORE_true_in)])/float(np.shape(NPS_SCORE_pred_in)[0])
+
     print "MSE:"
     print "insample: ",mean_squared_error(NPS_SCORE_true_in,NPS_SCORE_pred_in)
     print "outsample: ",mean_squared_error(NPS_SCORE_true_out,NPS_SCORE_pred_out)
-    print "----"
-    print "Success rate:"
-    print "insample: ",Success_rate_in
-    print "outsample: ",Success_rate_out
+
     
+    Models.plotAUC(y_test[:,0], pred_probas_out)
+
+
+
+
+
+
+#     NPS_SCORE_pred_out = [-100 if x <= 6 else 100 if x >= 9 else 0 for x in knnRegOutsampleBagg]
+#     NPS_SCORE_true_out = [-100 if x <= 6 else 100 if x >= 9 else 0 for x in y_test[:,1]]
+#     NPS_SCORE_pred_in = [-100 if x <= 6 else 100 if x >= 9 else 0 for x in knnRegInsampleBagg]
+#     NPS_SCORE_true_in = [-100 if x <= 6 else 100 if x >= 9 else 0 for x in y_train[:,1]]    
+    #Success_rate = sum([1  if x==y else 0 for x,y in zip(Cattrue,CatPred)])/float(np.shape(Cattrue)[0])
     
-    fpr,tpr,_ = roc_curve(y_test[:,0], pred_probas_out)
-    roc_auc = auc(fpr,tpr)
-    plt.plot(fpr,tpr,label='area = %.2f' %roc_auc)
-    plt.plot([0, 1], [0, 1], 'k--')
-    plt.xlim([0.0, 1.0])
-    plt.ylim([0.0, 1.05])
-    plt.legend(loc='lower right')
-    
-    plt.show()
+#     Success_rate_out = sum([1  if x==y else 0 for x,y in zip(NPS_SCORE_true_out,NPS_SCORE_pred_out)])/float(np.shape(NPS_SCORE_true_out)[0])
+#     Success_rate_in = sum([1  if x==y else 0 for x,y in zip(NPS_SCORE_pred_in,NPS_SCORE_true_in)])/float(np.shape(NPS_SCORE_pred_in)[0])
