@@ -119,6 +119,7 @@ def buildFeatures(chat,scores,PosNegSplit):
     w['Class'] = Class  
     w['SCORE'] = Score
     w['NPS_LEVEL'] = NPS_LEVEL
+    w['Tokens'] = Tokens
    # w['SESSION_ID'] = w.index
     
     data = normalizematrix(data)
@@ -167,14 +168,31 @@ if __name__ == '__main__':
     wordnet_lemmatizer = nltk.stem.WordNetLemmatizer()
     data, t = buildFeatures(chat_df,scores, 7)
     
-    t.drop(['TIMESTAMP','Count','NPS_LEVEL'], axis=1, inplace=True)
+    t.drop(['TIMESTAMP','Count'], axis=1, inplace=True)
     #t.drop(['NPS_LEVEL'], axis=1, inplace=True)
     Xtrain , Ytrain, Xtest, Ytest, featurestest,featurestrain, Scoretest, Scoretrain = splittrainTest(data, t, 0.15)
     
+    NPS_SCORE_train = [-100 if x <= 6 else 100 if x >= 9 else 0 for x in Scoretrain]
+    NPS_SCORE_test = [-100 if x <= 6 else 100 if x >= 9 else 0 for x in Scoretest]
+    mod = DecisionTreeRegressor(max_depth=150)
+    mod.fit(Xtrain,NPS_SCORE_train)
+    a = mod.predict(Xtest)
+    insamplePred= mod.predict(Xtrain)
+    zip(a,NPS_SCORE_test)
+    zip(insamplePred,NPS_SCORE_train)
+    Success_rate_test = sum([1  if x==y else 0 for x,y in zip(NPS_SCORE_test,a)])/float(np.shape(NPS_SCORE_test)[0])
+    Success_rate_train = sum([1  if x==y else 0 for x,y in zip(NPS_SCORE_train,insamplePred)])/float(np.shape(NPS_SCORE_train)[0])
+    print "MSE:"
+    print "insample: ",mean_squared_error(NPS_SCORE_train,insamplePred)
+    print "outsample: ",mean_squared_error(NPS_SCORE_test,a)
+    print "----"
+    print "Success rate:"
+    print "insample: ",Success_rate_train
+    print "outsample: ",Success_rate_test
     
     #myMod = Models.StackedModel(LogisticRegression(),svm.SVC(probability=True))
     #myMod.fit(Xtrain,featurestrain,Ytrain)
-    myMod = Models.StackedModel(LogisticRegression(),LinearRegression())#DecisionTreeRegressor())
+    myMod = Models.StackedModel(DecisionTreeRegressor(),LinearRegression())#DecisionTreeRegressor())
     myMod.fit(Xtrain,featurestrain,Ytrain,Scoretrain)
     OutSample = myMod.predict(Xtest,featurestest,Scoretest)
     

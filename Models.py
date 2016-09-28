@@ -10,7 +10,7 @@ from sklearn.metrics import *
 import sklearn
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.tree import DecisionTreeRegressor
-import neuralnetwork 
+#import neuralnetwork 
 from sklearn import svm
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -29,7 +29,8 @@ class StackedModel(object):
     def fit(self, Words, features, Y1,Y2):
         #self.model1 = LogisticRegression()#GaussianNB()#svm.LinearSVC()#
         self.model1.fit(Words, Y1)
-        Yint = self.model1.predict_proba(Words)[:,1]
+        Yint = self.model1.predict(Words)
+        #Yint = self.model1.predict_proba(Words)[:,1]
         Xint = np.column_stack(( features.as_matrix(), Yint))
         #self.model2 = LogisticRegression()#GaussianNB()#svm.LinearSVC()#
         
@@ -39,7 +40,7 @@ class StackedModel(object):
         self.model2.fit(Xint, Y2)   
         
     def predict(self, Words, features,Scoretest):
-        Yint = self.model1.predict_proba(Words)[:,1]
+        Yint = self.model1.predict(Words)
         Xint= np.column_stack(( features.as_matrix(), Yint))
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
