@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
 import matplotlib.pyplot as plt
+from collections import Counter
 
 import numpy as np
 
@@ -120,16 +121,45 @@ def display_metrics(classifierName,Y_pred,Y_true):
     print ""
     
 
-def NPSfrom1_10(outSamplePred,outSampleTrue,inSamplePred,inSampleTrue):
-    NPS_SCORE_pred_out = [-100 if x <= 6 else 100 if x >= 9 else 0 for x in outSamplePred]
-    NPS_SCORE_true_out = [-100 if x <= 6 else 100 if x >= 9 else 0 for x in outSampleTrue]
-    NPS_SCORE_pred_in = [-100 if x <= 6 else 100 if x >= 9 else 0 for x in inSamplePred]
-    NPS_SCORE_true_in = [-100 if x <= 6 else 100 if x >= 9 else 0 for x in inSampleTrue]  
+def NPSfrom1_10(outSamplePred,outSampleTrue,inSamplePred,inSampleTrue,low = 6,high=9):
+    NPS_SCORE_pred_out = [-100 if x <= low else 100 if x >= high else 0 for x in outSamplePred]
+    NPS_SCORE_true_out = [-100 if x <= low else 100 if x >= high else 0 for x in outSampleTrue]
+    NPS_SCORE_pred_in = [-100 if x <= low else 100 if x >= high else 0 for x in inSamplePred]
+    NPS_SCORE_true_in = [-100 if x <= low else 100 if x >= high else 0 for x in inSampleTrue]  
     return NPS_SCORE_pred_out,NPS_SCORE_true_out, NPS_SCORE_pred_in,NPS_SCORE_true_in     
     
 def printMSE(outSamplePred,outSampleTrue,inSamplePred,inSampleTrue):
     print "insample: ",mean_squared_error(inSampleTrue,inSamplePred)
     print "outsample: ",mean_squared_error(outSampleTrue,outSamplePred)
+    
+def printCategories(NPS_SCORE_pred_out,NPS_SCORE_true_out):
+    success = [1  if x==y else 0 for x,y in zip(NPS_SCORE_true_out,NPS_SCORE_pred_out)]
+    
+    high_true = [1  if x==100 else 0 for x in NPS_SCORE_true_out]
+    mid_true = [1  if x==0 else 0 for x in NPS_SCORE_true_out]
+    low_true = [1  if x==-100 else 0 for x in NPS_SCORE_true_out]
+    
+    Highpred = [NPS_SCORE_pred_out[i] for i in range(len(NPS_SCORE_pred_out)) if high_true[i] == 1]
+    Midpred = [NPS_SCORE_pred_out[i] for i in range(len(NPS_SCORE_pred_out)) if mid_true[i] == 1]
+    Lowpred = [NPS_SCORE_pred_out[i] for i in range(len(NPS_SCORE_pred_out)) if low_true[i] == 1]
+    
+    high = Counter(Highpred)
+    mid = Counter(Midpred)
+    low = Counter(Lowpred)
+    
+    true = Counter(NPS_SCORE_true_out)
+    
+    correctpred = [NPS_SCORE_pred_out[i] for i in range(len(NPS_SCORE_pred_out)) if success[i] == 1]
+    predsuccess = Counter(correctpred)
+    
+    def get_num(a,b):
+        return np.round(100*float(a)/float(b),2)
+        
+    
+    print "Success rate"
+    print "HIGH -", get_num(high.get(100),np.sum(high.values())),"%","(others in MID -",get_num(high.get(0),np.sum(high.values())),", LOW -",get_num(high.get(-100),np.sum(high.values())),")"
+    print "MID - ", get_num(mid.get(0),np.sum(mid.values())),"%","(others in HIGH -",get_num(mid.get(100),np.sum(mid.values())),", LOW -",get_num(mid.get(-100),np.sum(mid.values())),")"
+    print "LOW - ", get_num(low.get(-100),np.sum(low.values())),"%","(others in HIGH -",get_num(low.get(100),np.sum(low.values())),", MID -",get_num(low.get(0),np.sum(low.values())),")"
     
 def averageAUC(data,Label):
     

@@ -24,6 +24,9 @@ from sklearn.ensemble import BaggingRegressor
 import Models
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import LogisticRegression
+import pandas as pd
 
 #from NNet import NeuralNet
 def ReviewToWords(s,stopwords):
@@ -82,21 +85,38 @@ def ReviewToWords(s,stopwords):
     return myTok#,mood_score
   
 def buildFeatures(chat,scores,PosNegSplit):
+    time = np.empty(chat.shape[0])
+    #time = np.empty(chat.shape[0])
+    time[:] = np.NAN
+    timeSession = np.empty(chat.shape[0], dtype='|S20')#np.array(chat.shape[0], dtype=str)#.reshape(chat.shape[0],2)
+    timeSession[:] = np.NAN
+    
+    for i in range(1,chat.shape[0]):
+        #print chat.ix[i,"SESSION_ID"]
+        if chat.ix[i,"AGENT_ID"] !=0 and chat.ix[i-1,"AGENT_ID"] == 0 and chat.ix[i,"SESSION_ID"] == chat.ix[i-1,"SESSION_ID"]:
+            time[i] = int((chat.ix[i,"TIMESTAMP"] - chat.ix[i-1,"TIMESTAMP"]).seconds)
+            timeSession[i]= chat.ix[i,"SESSION_ID"]
+            
+    mydf = pd.DataFrame({'SESSION_ID':timeSession , 'AVG_resp_Time':time}).dropna()
+    #mydf['SESSION_ID'].apply(str)
+    timeWaited = mydf.groupby('SESSION_ID')['AVG_resp_Time'].max()    
     
     woAgent = chat[chat.AGENT_ID == 0]
     #woAgent= chat
-    #woAgent['CLASS'] =  woAgent['SCORE']
+
     woAgent['Tokens'] = woAgent['TEXT'].apply(lambda x: ReviewToWords(x,stopwords) )
 
     woAgent1 = woAgent.groupby('SESSION_ID')#,as_index = False)
     Tokens = woAgent1['Tokens'].sum() #list of words for each chat session
-    #y = woAgent1['CLASS'].first()
-    
     Score = woAgent1['SCORE'].first()
+    Count = woAgent1['SCORE'].count().rename("Count")
+    y = Score.apply(lambda x: 0 if x < PosNegSplit else 1 ).rename("CLASS")
     
-    y = Score.apply(lambda x: 0 if x < PosNegSplit else 1 ) #creates class label for potential classification
-    #NPS_LEVEL = woAgent1['NPS_LEVEL'].first()
-#     Count = woAgent1['CLASS'].count().rename("Count")
+    t = pd.concat((y,timeWaited,Score,Count,Tokens), axis=1,join= 'inner')
+    #plt.figure()
+    #plt.hist(t['AVG_resp_Time'],range=(0.0,100),bins=100)
+    #plt.hist(t[t['SCORE']== 1]['AVG_resp_Time'],range=(0.0,100),bins=100)
+     #creates class label for potential classification
 #     max_per_group = woAgent1['TIMESTAMP'].max()
 #     min_per_group = woAgent1['TIMESTAMP'].min()
 #     duration = (max_per_group - min_per_group).apply(lambda x: x.seconds)
@@ -131,8 +151,8 @@ def buildFeatures(chat,scores,PosNegSplit):
 #     #Mood = Mood/abs(Mood).max()
 #     #Count = Count/Count.max()
 #     t = w.reset_index()
- 
-    
+ #plt.scatter(t['AVG_resp_Time'],t['SCORE'])
+ #plt.xlim([0.0, 100])   
     return np.vstack((y.values,Score.values)).T,Tokens
 
 #Build word vector for training set by using the average value of all word vectors in the tweet, then scale
@@ -193,9 +213,9 @@ if __name__ == '__main__':
    
     #y = np.concatenate((np.ones(len(pos_tweets)), np.zeros(len(neg_tweets))))
 
-    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=42)
+    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=36)
     
-    n_dim = 50
+    n_dim =100
     #Initialize model and build vocab
     imdb_w2v = Word2Vec(size=n_dim, min_count=5)
     imdb_w2v.build_vocab(x_train)
@@ -236,39 +256,52 @@ if __name__ == '__main__':
     
 
 
-################ Regression
-    knn = neighbors.KNeighborsRegressor(4)
-    knn.fit(train_vecs, y_train[:,1])
-    knnRegInsample = knn.predict(train_vecs)
-    knnRegOutsample = knn.predict(test_vecs)
-    print "MSE 1-10 KNN"
-    Models.printMSE(knnRegOutsample,y_test[:,1],knnRegInsample,y_train[:,1])
-    NPS_SCORE_pred_out,NPS_SCORE_true_out, NPS_SCORE_pred_in,NPS_SCORE_true_in = Models.NPSfrom1_10(knnRegOutsample, y_test[:,1], knnRegInsample, y_train[:,1])
-    print "KNN - MSE - NPS:"
-    Models.printMSE(NPS_SCORE_pred_out,NPS_SCORE_true_out,NPS_SCORE_pred_in,NPS_SCORE_true_in)
+# ################ Regression 1
+#     knn = neighbors.KNeighborsRegressor(4)
+#     knn.fit(train_vecs, y_train[:,1])
+#     knnRegInsample = knn.predict(train_vecs)
+#     knnRegOutsample = knn.predict(test_vecs)
+#     print "MSE 1-10 KNN"
+#     Models.printMSE(knnRegOutsample,y_test[:,1],knnRegInsample,y_train[:,1])
+#     NPS_SCORE_pred_out,NPS_SCORE_true_out, NPS_SCORE_pred_in,NPS_SCORE_true_in = Models.NPSfrom1_10(knnRegOutsample, y_test[:,1], knnRegInsample, y_train[:,1])
+#     print "KNN - MSE - NPS:"
+#     Models.printMSE(NPS_SCORE_pred_out,NPS_SCORE_true_out,NPS_SCORE_pred_in,NPS_SCORE_true_in)
     
-    
-    treshol_low = 0.2
-    treshold_high = 0.7
 
-    lr = RandomForestClassifier(max_depth=50,n_estimators=10)#SGDClassifier(loss='log', penalty='l1')
-    lr.fit(train_vecs, y_train[:,0])
-    SGDInsample = lr.predict_proba(train_vecs)[:,1]*10
-    SGDOutsample = lr.predict_proba(test_vecs)[:,1]*10
+################ Regression 2
+    RF = RandomForestRegressor(max_depth=20,n_estimators=50)#SGDClassifier(loss='log', penalty='l1')
+    RF.fit(train_vecs, y_train[:,1])
+    RFInsample = RF.predict(train_vecs)#[:,1]
+    RFOutsample = RF.predict(test_vecs)#[:,1]
     print "MSE 1-10 SGD"
-    Models.printMSE(SGDOutsample,y_test[:,1],SGDInsample,y_train[:,1])
-    NPS_SCORE_pred_out,NPS_SCORE_true_out, NPS_SCORE_pred_in,NPS_SCORE_true_in = Models.NPSfrom1_10(SGDOutsample, y_test[:,1], SGDInsample, y_train[:,1])
+    Models.printMSE(RFOutsample,y_test[:,1],RFInsample,y_train[:,1])
+    NPS_SCORE_pred_out,NPS_SCORE_true_out, NPS_SCORE_pred_in,NPS_SCORE_true_in = Models.NPSfrom1_10(RFOutsample, y_test[:,1], RFInsample, y_train[:,1])#,low = 3,high=6)
     print "SGD - MSE - NPS:"
     Models.printMSE(NPS_SCORE_pred_out,NPS_SCORE_true_out,NPS_SCORE_pred_in,NPS_SCORE_true_in)
-
+    Models.printCategories(NPS_SCORE_pred_out,NPS_SCORE_true_out)
+    print("---")
     
-    StackedInsample = np.mean([SGDInsample,knnRegInsample],axis=0)
-    StackedOutsample = np.mean([SGDOutsample,knnRegOutsample],axis=0)
+################ Regression 3
+    lr = LogisticRegression()#(max_depth=20,n_estimators=50)#SGDClassifier(loss='log', penalty='l1')
+    lr.fit(train_vecs, y_train[:,0])
+    LRInsample = lr.predict_proba(train_vecs)[:,1]*10
+    LROutsample = lr.predict_proba(test_vecs)[:,1]*10
+    print "MSE 1-10 SGD"
+    Models.printMSE(LROutsample,y_test[:,1],LRInsample,y_train[:,1])
+    NPS_SCORE_pred_out,NPS_SCORE_true_out, NPS_SCORE_pred_in,NPS_SCORE_true_in = Models.NPSfrom1_10(LROutsample, y_test[:,1], LRInsample, y_train[:,1],low = 5,high=7)
+    print "SGD - MSE - NPS:"
+    Models.printMSE(NPS_SCORE_pred_out,NPS_SCORE_true_out,NPS_SCORE_pred_in,NPS_SCORE_true_in)
+    Models.printCategories(NPS_SCORE_pred_out,NPS_SCORE_true_out)
+    print("---")
+################ Stacking    
+    StackedInsample = np.mean([RFInsample,LRInsample],axis=0)
+    StackedOutsample = np.mean([RFOutsample,LROutsample],axis=0)
     print "MSE 1-10 (SGD,KNN) stacked"
     Models.printMSE(StackedOutsample,y_test[:,1],StackedInsample,y_train[:,1])
     NPS_SCORE_pred_out,NPS_SCORE_true_out, NPS_SCORE_pred_in,NPS_SCORE_true_in = Models.NPSfrom1_10(StackedOutsample, y_test[:,1], StackedInsample, y_train[:,1])
     print "(SGD,KNN) stacked - MSE - NPS:"
     Models.printMSE(NPS_SCORE_pred_out,NPS_SCORE_true_out,NPS_SCORE_pred_in,NPS_SCORE_true_in)
+    Models.printCategories(NPS_SCORE_pred_out,NPS_SCORE_true_out)
     
     
     nnet = NeuralNet(100, learn_rate=1e-1, penalty=1e-8)
